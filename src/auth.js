@@ -1,11 +1,17 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
-import { getFirestore } from 'firebase/firestore'
+import { getFirestore, 
+    collection, onSnapshot, addDoc,
+    query, orderBy, serverTimestamp,
+    doc, setDoc, getDoc
+ } from 'firebase/firestore'
 import {
     getAuth, 
     createUserWithEmailAndPassword,
-    signOut, signInWithEmailAndPassword
+    signOut, signInWithEmailAndPassword, onAuthStateChanged
 } from 'firebase/auth'
+
+import { setupGuide, setupUI } from './index.js'
 
 const firebaseConfig = {
   apiKey: "AIzaSyDmup3y0sFLhJ3yloQzQQTFyFiNlmcORdo",
@@ -23,6 +29,45 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore()
 const auth = getAuth()
 
+const colRef = collection(db, 'guides')
+
+const q = query(colRef, orderBy('createdAt'))
+
+onAuthStateChanged(auth, (user) => {
+    if (user) {
+        onSnapshot(q, (snapshot) => {
+            let guides = []
+            snapshot.docs.forEach((doc) => {
+                guides.push(doc.data())
+            })
+            console.log(guides)
+            setupGuide(guides)
+        }, err => console.log(err.message))
+        setupUI(user, doc, db, getDoc)
+    } else {
+        setupUI()
+        setupGuide([])
+    }
+})
+
+// create new guide
+const createForm = document.querySelector('#create-form');
+createForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  addDoc(colRef, {
+    title: createForm.title.value,
+    content: createForm.content.value,
+    createdAt: serverTimestamp()
+  }).then(() => {
+    // close the create modal & reset form
+    const modal = document.querySelector('#modal-create');
+    M.Modal.getInstance(modal).close();
+    createForm.reset();
+  }).catch(err => {
+    console.log(err.message);
+  });
+});
+
 // sign up user 
 const signupForm = document.getElementById('signup-form')
 signupForm.addEventListener('submit', function (e) {
@@ -36,15 +81,19 @@ signupForm.addEventListener('submit', function (e) {
     
     createUserWithEmailAndPassword(auth, email, password)
     .then((cred) => {
-        console.log(cred.user)
-    }).catch((error) => {
-        console.log(`${error.message}`)
-    })
-
-     // close the signup modal & reset form
+        const userRef = doc(db, 'user', cred.user.uid)
+        return setDoc(userRef, {
+            bio: signupForm['signup-bio'].value
+        })
+    }).then (() => {
+    // close the signup modal & reset form
      const modal = document.querySelector('#modal-signup');
      M.Modal.getInstance(modal).close();
      signupForm.reset();
+    })
+    .catch((error) => {
+        console.log(`${error.message}`)
+    })
 })
 
 //logging out 
